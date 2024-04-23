@@ -1,0 +1,10 @@
+{
+  "name": "Is your password secure?",
+  "description": "Works with Have I Been Pwned to check if your password has been compromised in a data breach.",
+  "version": "1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_popup": "hello.html",
+    "default_icon": "hello_extensions.png"
+  }
+}

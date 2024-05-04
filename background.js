@@ -1,67 +1,109 @@
 // background.js
 
 // Constants for API endpoints
-const haveIBeenPwnedApiUrl = "https://haveibeenpwned.com/api/v3";
-const zapProxyApiUrl = "http://localhost:8080";
 
-// Function to check Have I Been Pwned for breaches associated with an email
-function checkHaveIBeenPwned(email) {
-  // Replace 'YOUR_API_KEY' with your Have I Been Pwned API key
-  const headers = new Headers({
-    "hibp-api-key": "ec7f5c3904d7401aaf90bd96817686f7",
-    "user-agent": "HIBP-Example-App"
-  });
+console.log("Background script loaded and active.");
 
-  const url = `${haveIBeenPwnedApiUrl}/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`;
-
-  fetch(url, { headers: headers })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Error fetching: Have I Been Pwned data');
-      }
-      return response.json();
-    })
-    .then(data => {
-      console.log('Breaches for email:', data);
-      // Process and use the breaches data
-    })
-    .catch(error => {
-      console.error('Have I Been Pwned Error:', error);
+chrome.webNavigation.onCompleted.addListener(({ tabId, frameId }) => {
+    if (frameId !== 0) return;
+    chrome.scripting.executeScript({
+        target: { tabId },
+        function: newPageLoad,
     });
-}
+});
 
-// Function to send a message to the ZAP Proxy API
-function sendMessageToZapProxy(message) {
-  // ZAP API expects a specific format, ensure to adhere to that
-  const zapApiMessageUrl = `${zapProxyApiUrl}/JSON/core/action/sendMessage/?zapapiformat=JSON&formMethod=GET&message=${encodeURIComponent(message)}`;
+function newPageLoad() {
+    const inputs = document.getElementsByTagName("input");
+    let passwordInput = null;
+    let userIdentifierInput = null;
 
-  fetch(zapApiMessageUrl)
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Error communicating with ZAP Proxy');
-      }
-      return response.json();
-    })
-    .then(data => {
-      console.log('ZAP Proxy response:', data);
-      // Process the response from ZAP
-    })
-    .catch(error => {
-      console.error('ZAP Proxy Error:', error);
-    });
-}
-
-// Event listener for messages from the content scripts or popup
-chrome.runtime.onMessage.addListener(
-  function(request, sender, sendResponse) {
-    if (request.action === "loginDetected") {
-      checkHaveIBeenPwned(request.email);
-      sendMessageToZapProxy(`email=${request.email}&password=${request.password}`);
+    for (let input of inputs) {
+        if (!passwordInput && input.type === "password") {
+            passwordInput = input;
+            console.log("Password field detected on this page.");
+        }
+        if (!userIdentifierInput && (input.type === "email" || input.name.match(/user|login|email/i))) {
+            userIdentifierInput = input;
+            console.log("User identifier field detected on this page.");
+        }
+        if (passwordInput && userIdentifierInput) {
+            console.log("Detected a complete form for sending credentials.");
+            attachFormListener(passwordInput.form);
+            break;
+        }
     }
-    // Add any additional message handlers as necessary
+    if (!passwordInput || !userIdentifierInput) {
+        console.log("Incomplete or no credentials form detected on this page.");
+    }
+}
+
+
+//hipb bs
+const haveIBeenPwnedApiUrl = "https://haveibeenpwned.com/api/v3";
+const pwnedPasswordApiUrl = "https://api.pwnedpasswords.com/range";
+const apiKey = "ec7f5c3904d7401aaf90bd96817686f7";
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "checkCredentials") {
+      const { user, password } = message.data;
+      Promise.all([
+          checkEmail(user),
+          checkPassword(password)
+      ]).then(results => {
+          const [emailCompromised, passwordCompromised] = results;
+          chrome.tabs.sendMessage(sender.tab.id, {
+              type: 'credentialStatus',
+              emailCompromised: emailCompromised,
+              passwordCompromised: passwordCompromised
+          });
+      });
+      chrome.storage.local.set({credentialStatus: {emailCompromised, passwordCompromised}});
+      return true; // Indicate that the response is asynchronous
   }
-);
+});
 
-// The code above is a starting point and will not work until you replace 'YOUR_API_KEY' with your actual Have I Been Pwned API key, and expand the functionality according to your requirements.
 
-// You may also need to configure permissions in your manifest.json file to use the fetch API and interact with external URLs.
+function checkEmail(user) {
+  return fetch(`${haveIBeenPwnedApiUrl}/breachedaccount/${encodeURIComponent(user)}?truncateResponse=false`, {
+      headers: {
+          'hibp-api-key': apiKey
+      }
+  }).then(response => {
+      if (response.ok) return response.json();
+      if (response.status === 404) return false; // No breach found
+      throw new Error('Failed to fetch API');
+  }).then(data => {
+      return data.length > 0;
+  }).catch(error => {
+      console.error('Error checking email:', error);
+      return false;
+  });
+}
+
+function checkPassword(password) {
+  return sha1(password).then(hash => {
+      const prefix = hash.substr(0, 5);
+      const suffix = hash.substr(5).toUpperCase();
+
+      return fetch(`${pwnedPasswordApiUrl}/${prefix}`)
+          .then(response => response.text())
+          .then(text => {
+              const lines = text.split('\n');
+              const found = lines.some(line => {
+                  const [compSuffix, count] = line.split(':');
+                  return compSuffix === suffix;
+              });
+              return found;
+          }).catch(error => {
+              console.error('Error checking password:', error);
+              return false;
+          });
+  });
+}
+
+function sha1(input) {
+  const buffer = new TextEncoder().encode(input);
+  return crypto.subtle.digest('SHA-1', buffer).then(hash => {
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  });
+}

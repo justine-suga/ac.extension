@@ -3,12 +3,26 @@
   "description": "Works with Have I Been Pwned to check if your password has been compromised in a data breach.",
   "version": "1.0",
   "manifest_version": 3,
+  "background": {
+    "service_worker": "background.js"
+  },
   "host_permissions": [
-    "http://localhost:8080/*",
-    "https://haveibeenpwned.com/*"
+    "https://haveibeenpwned.com/*",
+    "https://*/*",
+    "https://api.pwnedpasswords.com/*"
   ],
   "action": {
-    "default_popup": "hello.html",
+    "default_popup": "popup.html",
     "default_icon": "hello_extensions.png"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "notifications", "scripting", "webNavigation", "storage", "activeTab", "tabs"
+  ]  
 }

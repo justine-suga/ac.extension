@@ -1,5 +1,16 @@
 // content.js
+
 console.log("Content script loaded.");
+
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    if (request.action === "checkCredentials") {
+        const { user, password } = request.data;
+        chrome.runtime.sendMessage({
+            action: "checkCredentials",
+            data: { user: user, password: password }
+        });
+    }
+});
 
 const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -43,31 +54,3 @@ function attachFormListener(form) {
         });
     });
 }
-
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-    console.log("Message received in background:", request);
-    if (request.action === "fetchCredentials") {
-        const emailInput = document.querySelector('input[type="email"]');
-        const usernameInput = document.querySelector('input[name="username"]');
-        const passwordInput = document.querySelector('input[type="password"]');
-        const userIdentifier = emailInput ? emailInput.value : (usernameInput ? usernameInput.value : 'No user identifier found');
-
-        if (passwordInput) {
-            const credentials = {
-                user: userIdentifier,
-                password: passwordInput.value
-            };
-            console.log('Credentials from page:', credentials);
-            sendResponse(credentials);
-        } else {
-            console.error("Failed to retrieve credentials: password input not found.");
-            sendResponse(null);
-        }
-    }
-});
-
-chrome.runtime.sendMessage({
-    type: 'credentialStatus',
-    emailCompromised: emailCompromised,
-    passwordCompromised: passwordCompromised
-});

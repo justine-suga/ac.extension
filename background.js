@@ -1,7 +1,5 @@
 // background.js
 
-// Constants for API endpoints
-
 console.log("Background script loaded and active.");
 
 chrome.webNavigation.onCompleted.addListener(({ tabId, frameId }) => {
@@ -43,9 +41,12 @@ const haveIBeenPwnedApiUrl = "https://haveibeenpwned.com/api/v3";
 const pwnedPasswordApiUrl = "https://api.pwnedpasswords.com/range";
 const apiKey = "ec7f5c3904d7401aaf90bd96817686f7";
 
+let popupTabId = null;
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "checkCredentials") {
       const { user, password } = message.data;
+      openNewTab(user, password );
       Promise.all([
           checkEmail(user),
           checkPassword(password)
@@ -62,6 +63,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+function openNewTab(user, password) {
+  if (popupTabId === null) {
+      chrome.tabs.create({
+          url: chrome.runtime.getURL(`popup.html?user=${encodeURIComponent(user)}&password=${encodeURIComponent(password)}`)
+      }, (tab) => {
+          popupTabId = tab.id;
+      });
+  } else {
+      chrome.tabs.get(popupTabId, (tab) => {
+          if (tab) {
+              chrome.tabs.update(popupTabId, { active: true });
+          } else {
+              chrome.tabs.create({
+                  url: chrome.runtime.getURL(`popup.html?user=${encodeURIComponent(user)}&password=${encodeURIComponent(password)}`)
+              }, (tab) => {
+                  popupTabId = tab.id;
+              });
+          }
+      });
+  }
+}
+
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  if (tabId === popupTabId) {
+      popupTabId = null;
+  }
+});
 
 function checkEmail(user) {
   return fetch(`${haveIBeenPwnedApiUrl}/breachedaccount/${encodeURIComponent(user)}?truncateResponse=false`, {

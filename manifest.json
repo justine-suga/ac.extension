@@ -9,7 +9,8 @@
   "host_permissions": [
     "https://haveibeenpwned.com/*",
     "https://*/*",
-    "https://api.pwnedpasswords.com/*"
+    "https://api.pwnedpasswords.com/*",
+    "https://raw.githubusercontent.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
